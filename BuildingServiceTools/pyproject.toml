@@ -1,0 +1,14 @@
+[project]
+name = "BuildingServiceTools"
+version = "0.1.0"
+requires-python = ">=3.10"
+description = "Tools for calculating CEC 2024 service loads"
+authors = [{name = "Unknown"}]
+
+[tool.black]
+line-length = 88
+
+[tool.mypy]
+python_version = "3.10"
+check_untyped_defs = true
+strict_optional = true
