@@ -2,4 +2,7 @@
 from importlib import metadata
 
 __all__ = ["__version__"]
-__version__ = metadata.version("BuildingServiceTools")
+try:
+    __version__ = metadata.version("BuildingServiceTools")
+except metadata.PackageNotFoundError:  # pragma: no cover - fallback for local runs
+    __version__ = "0.0.0"

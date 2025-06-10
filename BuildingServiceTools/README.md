@@ -1,6 +1,6 @@
 # BuildingServiceTools
 
-This project provides tools for calculating Canadian Electrical Code (CEC) 2024 service-load requirements for residential buildings. It includes calculators for individual houses and duplexes with a simple graphical user interface.
+This project provides tools for calculating Canadian Electrical Code (CEC) 2024 service-load requirements for residential buildings. It includes calculators for individual houses, duplexes and triplexes with a simple graphical user interface.
 
 ## Requirements
 - Python 3.10 or newer
