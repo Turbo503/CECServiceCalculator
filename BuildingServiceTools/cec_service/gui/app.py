@@ -1,13 +1,24 @@
 """Tkinter GUI application for service calculations."""
 from __future__ import annotations
 
+import sys
+from pathlib import Path
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from ..calculators.duplex import calculate_duplex_demand
-from ..calculators.house import calculate_demand
-from ..models import Dwelling
-from ..utils.validation import ValidationError, pos_or_none
+# Allow running this file directly by adjusting sys.path for relative imports
+if __package__ in {None, ""}:
+    # When run directly, add the project root to sys.path so absolute imports work
+    sys.path.append(str(Path(__file__).resolve().parents[2]))
+    from cec_service.calculators.duplex import calculate_duplex_demand
+    from cec_service.calculators.house import calculate_demand
+    from cec_service.models import Dwelling
+    from cec_service.utils.validation import ValidationError, pos_or_none
+else:
+    from ..calculators.duplex import calculate_duplex_demand
+    from ..calculators.house import calculate_demand
+    from ..models import Dwelling
+    from ..utils.validation import ValidationError, pos_or_none
 
 
 def _float_from_entry(entry: ttk.Entry) -> float | None:
