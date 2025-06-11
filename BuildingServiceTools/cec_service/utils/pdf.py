@@ -32,7 +32,10 @@ def simple_pdf(lines: Iterable[str], path: str) -> None:
         "/MediaBox [0 0 612 792] /Contents 5 0 R >>\nendobj\n"
     )
     add("4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>\nendobj\n")
-    add(f"5 0 obj\n<< /Length {len(stream)} >>\nstream\n{stream}\nendstream\nendobj\n")
+    stream_bytes = stream.encode("latin-1")
+    add(
+        f"5 0 obj\n<< /Length {len(stream_bytes)} >>\nstream\n{stream}\nendstream\nendobj\n"
+    )
 
     xref_pos = len("%PDF-1.4\n") + sum(len(o) for o in objects)
     xref_entries = ["0000000000 65535 f "] + [f"{o:010} 00000 n " for o in offsets]
@@ -40,8 +43,8 @@ def simple_pdf(lines: Iterable[str], path: str) -> None:
     trailer = f"trailer\n<< /Root 1 0 R /Size 6 >>\nstartxref\n{xref_pos}\n%%EOF\n"
 
     with open(path, "wb") as fh:
-        fh.write("%PDF-1.4\n".encode("ascii"))
+        fh.write("%PDF-1.4\n".encode("latin-1"))
         for obj in objects:
-            fh.write(obj.encode("ascii"))
-        fh.write(xref.encode("ascii"))
-        fh.write(trailer.encode("ascii"))
+            fh.write(obj.encode("latin-1"))
+        fh.write(xref.encode("latin-1"))
+        fh.write(trailer.encode("latin-1"))

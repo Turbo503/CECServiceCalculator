@@ -1,7 +1,7 @@
 """Triplex service load calculator."""
 
 from dataclasses import asdict
-from math import ceil
+from math import ceil, sqrt
 from typing import Any, Dict, Tuple
 
 from ..models import Dwelling
@@ -36,7 +36,7 @@ def _unit_loads(dw: Dwelling) -> Tuple[int, int, Dict[str, int]]:
     return base, heat_ac, details
 
 
-def calculate_triplex_demand(a: Dwelling, b: Dwelling, c: Dwelling) -> Dict[str, Any]:
+def calculate_triplex_demand(a: Dwelling, b: Dwelling, c: Dwelling, volts: int = 240, phases: int = 1) -> Dict[str, Any]:
     """Calculate service demand for a triplex."""
     units = [a, b, c]
     loads = [_unit_loads(u) for u in units]
@@ -53,7 +53,8 @@ def calculate_triplex_demand(a: Dwelling, b: Dwelling, c: Dwelling) -> Dict[str,
 
     total_heat = sum(load[1] for load in loads)
     total_watts = combined + total_heat
-    amps = total_watts / 240
+    divisor = volts if phases == 1 else volts * sqrt(3)
+    amps = total_watts / divisor
     breaker = next_standard_breaker(amps)
 
     details = {
@@ -68,6 +69,7 @@ def calculate_triplex_demand(a: Dwelling, b: Dwelling, c: Dwelling) -> Dict[str,
     return {
         "watts": total_watts,
         "amps": amps,
+        "calculation": f"{volts}" if phases == 1 else f"{volts} * \u221a3",
         "suggested_breaker": breaker,
         "inputs": {"unit_a": asdict(a), "unit_b": asdict(b), "unit_c": asdict(c)},
         "details": details,

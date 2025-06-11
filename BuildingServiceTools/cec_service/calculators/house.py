@@ -1,13 +1,13 @@
 """House service load calculator."""
 from dataclasses import asdict
-from math import ceil
+from math import ceil, sqrt
 from typing import Any, Dict
 
 from ..models import Dwelling
 from ..utils.breakers import next_standard_breaker
 
 
-def calculate_demand(dw: Dwelling) -> Dict[str, Any]:
+def calculate_demand(dw: Dwelling, volts: int = 240, phases: int = 1) -> Dict[str, Any]:
     """Calculate service demand for a single dwelling unit."""
     details: Dict[str, int] = {}
 
@@ -32,12 +32,15 @@ def calculate_demand(dw: Dwelling) -> Dict[str, Any]:
 
     total_watts = basic_load + heat_ac + range_load + ev_load + dryer_load + wh_load
     details["total_watts"] = total_watts
-    amps = total_watts / 240
+    divisor = volts if phases == 1 else volts * sqrt(3)
+    amps = total_watts / divisor
     breaker = next_standard_breaker(amps)
+    calc = f"{volts}" if phases == 1 else f"{volts} * \u221a3"
 
     return {
         "watts": total_watts,
         "amps": amps,
+        "calculation": calc,
         "suggested_breaker": breaker,
         "inputs": asdict(dw),
         "details": details,

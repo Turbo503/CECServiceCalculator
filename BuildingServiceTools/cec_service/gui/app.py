@@ -9,6 +9,11 @@ from tkinter import messagebox, ttk, filedialog
 from math import ceil
 from typing import Any
 
+# HVAC system options
+HVAC_OPTIONS = ("Heating & AC", "Heat Pump")
+# Phase system options
+PHASE_OPTIONS = ("Single Phase", "Three Phase")
+
 # Allow running this file directly by adjusting sys.path for relative imports
 if __package__ in {None, ""}:
     # When run directly, add the project root to sys.path so absolute imports work
@@ -44,19 +49,21 @@ def _describe_unit(inputs: dict[str, Any], details: dict[str, int]) -> list[str]
         lines.append(
             f"Extra area: ({extra_area:.0f} m² /90 -> {units}) x 1000 W = {details['extra_area_load']} W"
         )
-    lines.append(f"Range: {inputs['range_kw']} kW -> {details['range_load']} W")
+    lines.append(
+        f"Range: {inputs['range_kw'] * 1000:.0f} W -> {details['range_load']} W"
+    )
     if inputs.get("has_ev"):
         lines.append(f"EVSE: {inputs['ev_amps']} A x 240 V = {details['ev_load']} W")
     if inputs.get("dryer_kw"):
         lines.append(
-            f"Dryer: {inputs['dryer_kw']} kW x 25% = {details['dryer_load']} W"
+            f"Dryer: {inputs['dryer_kw'] * 1000:.0f} W x 25% = {details['dryer_load']} W"
         )
     if inputs.get("water_heater_kw"):
         lines.append(
-            f"Water Heater: {inputs['water_heater_kw']} kW x 25% = {details['wh_load']} W"
+            f"Water Heater: {inputs['water_heater_kw'] * 1000:.0f} W x 25% = {details['wh_load']} W"
         )
     lines.append(
-        f"Heat/AC: max({inputs.get('heat_kw') or 0}, {inputs.get('ac_kw') or 0}) kW x 1000 = {details['heat_ac']} W"
+        f"Heat/AC: max({(inputs.get('heat_kw') or 0) * 1000:.0f}, {(inputs.get('ac_kw') or 0) * 1000:.0f}) W = {details['heat_ac']} W"
     )
     lines.append(f"Total Watts: {details.get('total_watts', '?')}")
     return lines
@@ -82,11 +89,11 @@ class ServiceApp(tk.Tk):
 
         labels = [
             ("Floor Area (m²)", "floor"),
-            ("Heating kW", "heat"),
-            ("AC kW", "ac"),
-            ("Range kW", "range"),
-            ("Dryer kW", "dryer"),
-            ("Water Heater kW", "wh"),
+            ("Heating W", "heat"),
+            ("AC W", "ac"),
+            ("Range W", "range"),
+            ("Dryer W", "dryer"),
+            ("Water Heater W", "wh"),
             ("EV Amps", "ev"),
         ]
         self.house_entries: dict[str, ttk.Entry] = {}
@@ -96,43 +103,84 @@ class ServiceApp(tk.Tk):
             entry.grid(row=row, column=1)
             self.house_entries[key] = entry
 
+        row_off = len(labels)
+
+        # HVAC type selector
+        self.house_hvac_var = tk.StringVar(value="Heat Pump")
+        ttk.Label(frame, text="HVAC Type").grid(row=row_off, column=0, sticky="w")
+        hvac_box = ttk.Combobox(
+            frame, values=HVAC_OPTIONS, textvariable=self.house_hvac_var, state="readonly"
+        )
+        hvac_box.grid(row=row_off, column=1)
+        
+        def _update_house_hvac(*_):
+            if self.house_hvac_var.get() == "Heat Pump":
+                self.house_entries["ac"].delete(0, tk.END)
+                self.house_entries["ac"].config(state="disabled")
+            else:
+                self.house_entries["ac"].config(state="normal")
+
+        hvac_box.bind("<<ComboboxSelected>>", _update_house_hvac)
+        _update_house_hvac()
+
+        row_off += 1
         self.house_ev_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(frame, text="Include EVSE", variable=self.house_ev_var).grid(
-            row=len(labels), column=0, columnspan=2
+            row=row_off, column=0, columnspan=2
         )
 
+        row_off += 1
+        self.house_phase_var = tk.StringVar(value=PHASE_OPTIONS[0])
+        ttk.Label(frame, text="Phase").grid(row=row_off, column=0, sticky="w")
+        phase_box = ttk.Combobox(
+            frame, values=PHASE_OPTIONS, textvariable=self.house_phase_var, state="readonly"
+        )
+        phase_box.grid(row=row_off, column=1)
+
+        row_off += 1
         ttk.Button(frame, text="Calculate", command=self._calc_house).grid(
-            row=len(labels) + 1, column=0, columnspan=2, pady=5
+            row=row_off, column=0, columnspan=2, pady=5
         )
 
+        row_off += 1
         ttk.Button(frame, text="Export PDF", command=self._export_house_pdf).grid(
-            row=len(labels) + 2, column=0, columnspan=2
+            row=row_off, column=0, columnspan=2
         )
 
+        row_off += 1
         self.house_result = tk.StringVar()
         ttk.Label(frame, textvariable=self.house_result).grid(
-            row=len(labels) + 3, column=0, columnspan=2
+            row=row_off, column=0, columnspan=2
         )
 
     def _calc_house(self) -> None:
         try:
+            ac_kw = None
+            if self.house_hvac_var.get() != "Heat Pump":
+                ac_val = _float_from_entry(self.house_entries["ac"])
+                ac_kw = pos_or_none(ac_val / 1000 if ac_val is not None else None, "ac_w")
             dw = Dwelling(
                 floor_area_m2=float(self.house_entries["floor"].get()),
                 heat_kw=pos_or_none(
-                    _float_from_entry(self.house_entries["heat"]), "heat_kw"
+                    (val := _float_from_entry(self.house_entries["heat"])) / 1000 if val is not None else None,
+                    "heat_w",
                 ),
-                ac_kw=pos_or_none(_float_from_entry(self.house_entries["ac"]), "ac_kw"),
-                range_kw=_float_from_entry(self.house_entries["range"]) or 12.0,
+                ac_kw=ac_kw,
+                range_kw=(val := _float_from_entry(self.house_entries["range"])) / 1000 if val is not None else 12.0,
                 dryer_kw=pos_or_none(
-                    _float_from_entry(self.house_entries["dryer"]), "dryer_kw"
+                    (val := _float_from_entry(self.house_entries["dryer"])) / 1000 if val is not None else None,
+                    "dryer_w",
                 ),
                 water_heater_kw=pos_or_none(
-                    _float_from_entry(self.house_entries["wh"]), "water_heater_kw"
+                    (val := _float_from_entry(self.house_entries["wh"])) / 1000 if val is not None else None,
+                    "water_heater_w",
                 ),
                 has_ev=self.house_ev_var.get(),
                 ev_amps=int(_float_from_entry(self.house_entries["ev"]) or 32),
             )
-            result = calculate_demand(dw)
+            phases = 3 if self.house_phase_var.get() == "Three Phase" else 1
+            volts = 208 if phases == 3 else 240
+            result = calculate_demand(dw, volts=volts, phases=phases)
             self.house_last_result = result
             self.house_result.set(
                 f"{result['amps']:.1f} A -> {result['suggested_breaker']} A"
@@ -155,7 +203,7 @@ class ServiceApp(tk.Tk):
             lines = [
                 "House Calculation",
                 f"Total Watts: {result['watts']}",
-                f"Total Amps: {result['amps']:.1f}",
+                f"Calculation: {result['watts']} W / {result['calculation']} = {result['amps']:.1f} A",
                 f"Suggested Breaker: {result['suggested_breaker']} A",
                 "",
                 "Details:",
@@ -172,16 +220,17 @@ class ServiceApp(tk.Tk):
 
         fields = [
             ("Floor Area (m²)", "floor"),
-            ("Heating kW", "heat"),
-            ("AC kW", "ac"),
-            ("Range kW", "range"),
-            ("Dryer kW", "dryer"),
-            ("Water Heater kW", "wh"),
+            ("Heating W", "heat"),
+            ("AC W", "ac"),
+            ("Range W", "range"),
+            ("Dryer W", "dryer"),
+            ("Water Heater W", "wh"),
             ("EV Amps", "ev"),
         ]
 
         self.duplex_entries: list[dict[str, ttk.Entry]] = []
         self.duplex_ev_vars: list[tk.BooleanVar] = []
+        self.duplex_hvac_vars: list[tk.StringVar] = []
         for col in range(2):
             lf = ttk.LabelFrame(frame, text=f"Unit {col + 1}")
             lf.grid(row=0, column=col, padx=5, pady=5, sticky="n")
@@ -191,35 +240,73 @@ class ServiceApp(tk.Tk):
                 entry = ttk.Entry(lf)
                 entry.grid(row=row, column=1)
                 entries[key] = entry
+            hv_var = tk.StringVar(value="Heat Pump")
+            ttk.Label(lf, text="HVAC Type").grid(row=len(fields), column=0, sticky="w")
+            hv_box = ttk.Combobox(lf, values=HVAC_OPTIONS, textvariable=hv_var, state="readonly")
+            hv_box.grid(row=len(fields), column=1)
+
+            def _update_hvac(e=None, ent=entries["ac"], var=hv_var):
+                if var.get() == "Heat Pump":
+                    ent.delete(0, tk.END)
+                    ent.config(state="disabled")
+                else:
+                    ent.config(state="normal")
+
+            hv_box.bind("<<ComboboxSelected>>", _update_hvac)
+            # Add EV checkbox after HVAC row
+            _update_hvac()
             var = tk.BooleanVar(value=True)
             ttk.Checkbutton(lf, text="Include EVSE", variable=var).grid(
-                row=len(fields), column=0, columnspan=2
+                row=len(fields) + 1, column=0, columnspan=2
             )
             self.duplex_ev_vars.append(var)
+            self.duplex_hvac_vars.append(hv_var)
             self.duplex_entries.append(entries)
 
+        row_off = 1
+        self.duplex_phase_var = tk.StringVar(value=PHASE_OPTIONS[0])
+        ttk.Label(frame, text="Phase").grid(row=row_off, column=0, sticky="w")
+        phase_box = ttk.Combobox(
+            frame, values=PHASE_OPTIONS, textvariable=self.duplex_phase_var, state="readonly"
+        )
+        phase_box.grid(row=row_off, column=1)
+
+        row_off += 1
         ttk.Button(frame, text="Calculate", command=self._calc_duplex).grid(
-            row=1, column=0, columnspan=2, pady=5
+            row=row_off, column=0, columnspan=2, pady=5
         )
 
+        row_off += 1
         ttk.Button(frame, text="Export PDF", command=self._export_duplex_pdf).grid(
-            row=2, column=0, columnspan=2
+            row=row_off, column=0, columnspan=2
         )
 
+        row_off += 1
         self.duplex_result = tk.StringVar()
         ttk.Label(frame, textvariable=self.duplex_result).grid(
-            row=3, column=0, columnspan=2
+            row=row_off, column=0, columnspan=2
         )
 
     def _make_unit(self, entries: dict[str, ttk.Entry], idx: int) -> Dwelling:
+        ac_kw = None
+        if self.duplex_hvac_vars[idx].get() != "Heat Pump":
+            val = _float_from_entry(entries["ac"])
+            ac_kw = pos_or_none(val / 1000 if val is not None else None, "ac_w")
         return Dwelling(
             floor_area_m2=float(entries["floor"].get()),
-            heat_kw=pos_or_none(_float_from_entry(entries["heat"]), "heat_kw"),
-            ac_kw=pos_or_none(_float_from_entry(entries["ac"]), "ac_kw"),
-            range_kw=_float_from_entry(entries["range"]) or 12.0,
-            dryer_kw=pos_or_none(_float_from_entry(entries["dryer"]), "dryer_kw"),
+            heat_kw=pos_or_none(
+                (val := _float_from_entry(entries["heat"])) / 1000 if val is not None else None,
+                "heat_w",
+            ),
+            ac_kw=ac_kw,
+            range_kw=(val := _float_from_entry(entries["range"])) / 1000 if val is not None else 12.0,
+            dryer_kw=pos_or_none(
+                (val := _float_from_entry(entries["dryer"])) / 1000 if val is not None else None,
+                "dryer_w",
+            ),
             water_heater_kw=pos_or_none(
-                _float_from_entry(entries["wh"]), "water_heater_kw"
+                (val := _float_from_entry(entries["wh"])) / 1000 if val is not None else None,
+                "water_heater_w"
             ),
             has_ev=self.duplex_ev_vars[idx].get(),
             ev_amps=int(_float_from_entry(entries["ev"]) or 32),
@@ -229,7 +316,9 @@ class ServiceApp(tk.Tk):
         try:
             a = self._make_unit(self.duplex_entries[0], 0)
             b = self._make_unit(self.duplex_entries[1], 1)
-            result = calculate_duplex_demand(a, b)
+            phases = 3 if self.duplex_phase_var.get() == "Three Phase" else 1
+            volts = 208 if phases == 3 else 240
+            result = calculate_duplex_demand(a, b, volts=volts, phases=phases)
             self.duplex_last_result = result
             self.duplex_result.set(
                 f"{result['amps']:.1f} A -> {result['suggested_breaker']} A"
@@ -252,7 +341,7 @@ class ServiceApp(tk.Tk):
             lines = [
                 "Duplex Calculation",
                 f"Total Watts: {result['watts']}",
-                f"Total Amps: {result['amps']:.1f}",
+                f"Calculation: {result['watts']} W / {result['calculation']} = {result['amps']:.1f} A",
                 f"Suggested Breaker: {result['suggested_breaker']} A",
                 "",
                 "Details:",
@@ -287,16 +376,17 @@ class ServiceApp(tk.Tk):
 
         fields = [
             ("Floor Area (m²)", "floor"),
-            ("Heating kW", "heat"),
-            ("AC kW", "ac"),
-            ("Range kW", "range"),
-            ("Dryer kW", "dryer"),
-            ("Water Heater kW", "wh"),
+            ("Heating W", "heat"),
+            ("AC W", "ac"),
+            ("Range W", "range"),
+            ("Dryer W", "dryer"),
+            ("Water Heater W", "wh"),
             ("EV Amps", "ev"),
         ]
 
         self.triplex_entries: list[dict[str, ttk.Entry]] = []
         self.triplex_ev_vars: list[tk.BooleanVar] = []
+        self.triplex_hvac_vars: list[tk.StringVar] = []
         for col in range(3):
             lf = ttk.LabelFrame(frame, text=f"Unit {col + 1}")
             lf.grid(row=0, column=col, padx=5, pady=5, sticky="n")
@@ -306,35 +396,72 @@ class ServiceApp(tk.Tk):
                 entry = ttk.Entry(lf)
                 entry.grid(row=row, column=1)
                 entries[key] = entry
+            hv_var = tk.StringVar(value="Heat Pump")
+            ttk.Label(lf, text="HVAC Type").grid(row=len(fields), column=0, sticky="w")
+            hv_box = ttk.Combobox(lf, values=HVAC_OPTIONS, textvariable=hv_var, state="readonly")
+            hv_box.grid(row=len(fields), column=1)
+
+            def _update_hvac(e=None, ent=entries["ac"], var=hv_var):
+                if var.get() == "Heat Pump":
+                    ent.delete(0, tk.END)
+                    ent.config(state="disabled")
+                else:
+                    ent.config(state="normal")
+
+            hv_box.bind("<<ComboboxSelected>>", _update_hvac)
+            _update_hvac()
             var = tk.BooleanVar(value=True)
             ttk.Checkbutton(lf, text="Include EVSE", variable=var).grid(
-                row=len(fields), column=0, columnspan=2
+                row=len(fields) + 1, column=0, columnspan=2
             )
             self.triplex_ev_vars.append(var)
+            self.triplex_hvac_vars.append(hv_var)
             self.triplex_entries.append(entries)
 
+        row_off = 1
+        self.triplex_phase_var = tk.StringVar(value=PHASE_OPTIONS[0])
+        ttk.Label(frame, text="Phase").grid(row=row_off, column=0, sticky="w")
+        phase_box = ttk.Combobox(
+            frame, values=PHASE_OPTIONS, textvariable=self.triplex_phase_var, state="readonly"
+        )
+        phase_box.grid(row=row_off, column=1)
+
+        row_off += 1
         ttk.Button(frame, text="Calculate", command=self._calc_triplex).grid(
-            row=1, column=0, columnspan=3, pady=5
+            row=row_off, column=0, columnspan=3, pady=5
         )
 
+        row_off += 1
         ttk.Button(frame, text="Export PDF", command=self._export_triplex_pdf).grid(
-            row=2, column=0, columnspan=3
+            row=row_off, column=0, columnspan=3
         )
 
+        row_off += 1
         self.triplex_result = tk.StringVar()
         ttk.Label(frame, textvariable=self.triplex_result).grid(
-            row=3, column=0, columnspan=3
+            row=row_off, column=0, columnspan=3
         )
 
     def _make_triplex_unit(self, entries: dict[str, ttk.Entry], idx: int) -> Dwelling:
+        ac_kw = None
+        if self.triplex_hvac_vars[idx].get() != "Heat Pump":
+            val = _float_from_entry(entries["ac"])
+            ac_kw = pos_or_none(val / 1000 if val is not None else None, "ac_w")
         return Dwelling(
             floor_area_m2=float(entries["floor"].get()),
-            heat_kw=pos_or_none(_float_from_entry(entries["heat"]), "heat_kw"),
-            ac_kw=pos_or_none(_float_from_entry(entries["ac"]), "ac_kw"),
-            range_kw=_float_from_entry(entries["range"]) or 12.0,
-            dryer_kw=pos_or_none(_float_from_entry(entries["dryer"]), "dryer_kw"),
+            heat_kw=pos_or_none(
+                (val := _float_from_entry(entries["heat"])) / 1000 if val is not None else None,
+                "heat_w",
+            ),
+            ac_kw=ac_kw,
+            range_kw=(val := _float_from_entry(entries["range"])) / 1000 if val is not None else 12.0,
+            dryer_kw=pos_or_none(
+                (val := _float_from_entry(entries["dryer"])) / 1000 if val is not None else None,
+                "dryer_w",
+            ),
             water_heater_kw=pos_or_none(
-                _float_from_entry(entries["wh"]), "water_heater_kw"
+                (val := _float_from_entry(entries["wh"])) / 1000 if val is not None else None,
+                "water_heater_w"
             ),
             has_ev=self.triplex_ev_vars[idx].get(),
             ev_amps=int(_float_from_entry(entries["ev"]) or 32),
@@ -345,7 +472,9 @@ class ServiceApp(tk.Tk):
             a = self._make_triplex_unit(self.triplex_entries[0], 0)
             b = self._make_triplex_unit(self.triplex_entries[1], 1)
             c = self._make_triplex_unit(self.triplex_entries[2], 2)
-            result = calculate_triplex_demand(a, b, c)
+            phases = 3 if self.triplex_phase_var.get() == "Three Phase" else 1
+            volts = 208 if phases == 3 else 240
+            result = calculate_triplex_demand(a, b, c, volts=volts, phases=phases)
             self.triplex_last_result = result
             self.triplex_result.set(
                 f"{result['amps']:.1f} A -> {result['suggested_breaker']} A"
@@ -368,7 +497,7 @@ class ServiceApp(tk.Tk):
             lines = [
                 "Triplex Calculation",
                 f"Total Watts: {result['watts']}",
-                f"Total Amps: {result['amps']:.1f}",
+                f"Calculation: {result['watts']} W / {result['calculation']} = {result['amps']:.1f} A",
                 f"Suggested Breaker: {result['suggested_breaker']} A",
                 "",
                 "Details:",
