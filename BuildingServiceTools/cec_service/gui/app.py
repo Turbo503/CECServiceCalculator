@@ -9,6 +9,9 @@ from tkinter import messagebox, ttk, filedialog
 from math import ceil
 from typing import Any
 
+# HVAC system options
+HVAC_OPTIONS = ("Heating & AC", "Heat Pump")
+
 # Allow running this file directly by adjusting sys.path for relative imports
 if __package__ in {None, ""}:
     # When run directly, add the project root to sys.path so absolute imports work
@@ -96,32 +99,51 @@ class ServiceApp(tk.Tk):
             entry.grid(row=row, column=1)
             self.house_entries[key] = entry
 
+        # HVAC type selector
+        self.house_hvac_var = tk.StringVar(value=HVAC_OPTIONS[0])
+        ttk.Label(frame, text="HVAC Type").grid(row=len(labels), column=0, sticky="w")
+        hvac_box = ttk.Combobox(frame, values=HVAC_OPTIONS, textvariable=self.house_hvac_var, state="readonly")
+        hvac_box.grid(row=len(labels), column=1)
+
+        def _update_house_hvac(*_):
+            if self.house_hvac_var.get() == "Heat Pump":
+                self.house_entries["ac"].delete(0, tk.END)
+                self.house_entries["ac"].config(state="disabled")
+            else:
+                self.house_entries["ac"].config(state="normal")
+
+        hvac_box.bind("<<ComboboxSelected>>", _update_house_hvac)
+        _update_house_hvac()
+
         self.house_ev_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(frame, text="Include EVSE", variable=self.house_ev_var).grid(
-            row=len(labels), column=0, columnspan=2
+            row=len(labels) + 1, column=0, columnspan=2
         )
 
         ttk.Button(frame, text="Calculate", command=self._calc_house).grid(
-            row=len(labels) + 1, column=0, columnspan=2, pady=5
+            row=len(labels) + 2, column=0, columnspan=2, pady=5
         )
 
         ttk.Button(frame, text="Export PDF", command=self._export_house_pdf).grid(
-            row=len(labels) + 2, column=0, columnspan=2
+            row=len(labels) + 3, column=0, columnspan=2
         )
 
         self.house_result = tk.StringVar()
         ttk.Label(frame, textvariable=self.house_result).grid(
-            row=len(labels) + 3, column=0, columnspan=2
+            row=len(labels) + 4, column=0, columnspan=2
         )
 
     def _calc_house(self) -> None:
         try:
+            ac_kw = None
+            if self.house_hvac_var.get() != "Heat Pump":
+                ac_kw = pos_or_none(_float_from_entry(self.house_entries["ac"]), "ac_kw")
             dw = Dwelling(
                 floor_area_m2=float(self.house_entries["floor"].get()),
                 heat_kw=pos_or_none(
                     _float_from_entry(self.house_entries["heat"]), "heat_kw"
                 ),
-                ac_kw=pos_or_none(_float_from_entry(self.house_entries["ac"]), "ac_kw"),
+                ac_kw=ac_kw,
                 range_kw=_float_from_entry(self.house_entries["range"]) or 12.0,
                 dryer_kw=pos_or_none(
                     _float_from_entry(self.house_entries["dryer"]), "dryer_kw"
@@ -182,6 +204,7 @@ class ServiceApp(tk.Tk):
 
         self.duplex_entries: list[dict[str, ttk.Entry]] = []
         self.duplex_ev_vars: list[tk.BooleanVar] = []
+        self.duplex_hvac_vars: list[tk.StringVar] = []
         for col in range(2):
             lf = ttk.LabelFrame(frame, text=f"Unit {col + 1}")
             lf.grid(row=0, column=col, padx=5, pady=5, sticky="n")
@@ -191,11 +214,27 @@ class ServiceApp(tk.Tk):
                 entry = ttk.Entry(lf)
                 entry.grid(row=row, column=1)
                 entries[key] = entry
+            hv_var = tk.StringVar(value=HVAC_OPTIONS[0])
+            ttk.Label(lf, text="HVAC Type").grid(row=len(fields), column=0, sticky="w")
+            hv_box = ttk.Combobox(lf, values=HVAC_OPTIONS, textvariable=hv_var, state="readonly")
+            hv_box.grid(row=len(fields), column=1)
+
+            def _update_hvac(e=None, ent=entries["ac"], var=hv_var):
+                if var.get() == "Heat Pump":
+                    ent.delete(0, tk.END)
+                    ent.config(state="disabled")
+                else:
+                    ent.config(state="normal")
+
+            hv_box.bind("<<ComboboxSelected>>", _update_hvac)
+            # Add EV checkbox after HVAC row
+            _update_hvac()
             var = tk.BooleanVar(value=True)
             ttk.Checkbutton(lf, text="Include EVSE", variable=var).grid(
-                row=len(fields), column=0, columnspan=2
+                row=len(fields) + 1, column=0, columnspan=2
             )
             self.duplex_ev_vars.append(var)
+            self.duplex_hvac_vars.append(hv_var)
             self.duplex_entries.append(entries)
 
         ttk.Button(frame, text="Calculate", command=self._calc_duplex).grid(
@@ -212,10 +251,13 @@ class ServiceApp(tk.Tk):
         )
 
     def _make_unit(self, entries: dict[str, ttk.Entry], idx: int) -> Dwelling:
+        ac_kw = None
+        if self.duplex_hvac_vars[idx].get() != "Heat Pump":
+            ac_kw = pos_or_none(_float_from_entry(entries["ac"]), "ac_kw")
         return Dwelling(
             floor_area_m2=float(entries["floor"].get()),
             heat_kw=pos_or_none(_float_from_entry(entries["heat"]), "heat_kw"),
-            ac_kw=pos_or_none(_float_from_entry(entries["ac"]), "ac_kw"),
+            ac_kw=ac_kw,
             range_kw=_float_from_entry(entries["range"]) or 12.0,
             dryer_kw=pos_or_none(_float_from_entry(entries["dryer"]), "dryer_kw"),
             water_heater_kw=pos_or_none(
@@ -297,6 +339,7 @@ class ServiceApp(tk.Tk):
 
         self.triplex_entries: list[dict[str, ttk.Entry]] = []
         self.triplex_ev_vars: list[tk.BooleanVar] = []
+        self.triplex_hvac_vars: list[tk.StringVar] = []
         for col in range(3):
             lf = ttk.LabelFrame(frame, text=f"Unit {col + 1}")
             lf.grid(row=0, column=col, padx=5, pady=5, sticky="n")
@@ -306,11 +349,26 @@ class ServiceApp(tk.Tk):
                 entry = ttk.Entry(lf)
                 entry.grid(row=row, column=1)
                 entries[key] = entry
+            hv_var = tk.StringVar(value=HVAC_OPTIONS[0])
+            ttk.Label(lf, text="HVAC Type").grid(row=len(fields), column=0, sticky="w")
+            hv_box = ttk.Combobox(lf, values=HVAC_OPTIONS, textvariable=hv_var, state="readonly")
+            hv_box.grid(row=len(fields), column=1)
+
+            def _update_hvac(e=None, ent=entries["ac"], var=hv_var):
+                if var.get() == "Heat Pump":
+                    ent.delete(0, tk.END)
+                    ent.config(state="disabled")
+                else:
+                    ent.config(state="normal")
+
+            hv_box.bind("<<ComboboxSelected>>", _update_hvac)
+            _update_hvac()
             var = tk.BooleanVar(value=True)
             ttk.Checkbutton(lf, text="Include EVSE", variable=var).grid(
-                row=len(fields), column=0, columnspan=2
+                row=len(fields) + 1, column=0, columnspan=2
             )
             self.triplex_ev_vars.append(var)
+            self.triplex_hvac_vars.append(hv_var)
             self.triplex_entries.append(entries)
 
         ttk.Button(frame, text="Calculate", command=self._calc_triplex).grid(
@@ -327,10 +385,13 @@ class ServiceApp(tk.Tk):
         )
 
     def _make_triplex_unit(self, entries: dict[str, ttk.Entry], idx: int) -> Dwelling:
+        ac_kw = None
+        if self.triplex_hvac_vars[idx].get() != "Heat Pump":
+            ac_kw = pos_or_none(_float_from_entry(entries["ac"]), "ac_kw")
         return Dwelling(
             floor_area_m2=float(entries["floor"].get()),
             heat_kw=pos_or_none(_float_from_entry(entries["heat"]), "heat_kw"),
-            ac_kw=pos_or_none(_float_from_entry(entries["ac"]), "ac_kw"),
+            ac_kw=ac_kw,
             range_kw=_float_from_entry(entries["range"]) or 12.0,
             dryer_kw=pos_or_none(_float_from_entry(entries["dryer"]), "dryer_kw"),
             water_heater_kw=pos_or_none(
