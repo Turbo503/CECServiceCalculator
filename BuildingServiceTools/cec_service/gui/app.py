@@ -15,6 +15,10 @@ HVAC_OPTIONS = ("Heating & AC", "Heat Pump")
 HEAT_UNITS = ("kW", "tons")
 TON_TO_KW = 3.516
 EV_AMPS = (16, 24, 30, 40, 48, 60, 64, 70, 80)
+DRYER_KW_OPTIONS = (4.0, 5.0, 6.0)
+WH_UNITS = ("kW", "gal")
+WH_GALLON_SIZES = (30, 40, 50, 65, 80)
+GALLON_TO_KW = {30: 3.0, 40: 4.5, 50: 5.5, 65: 6.0, 80: 6.0}
 
 # Allow running this file directly by adjusting sys.path for relative imports
 if __package__ in {None, ""}:
@@ -113,6 +117,10 @@ class ServiceApp(tk.Tk):
             if key == "ev":
                 entry = ttk.Combobox(frame, values=EV_AMPS)
                 entry.insert(0, "32")
+            elif key == "dryer":
+                entry = ttk.Combobox(frame, values=DRYER_KW_OPTIONS)
+            elif key == "wh":
+                entry = ttk.Combobox(frame)
             else:
                 entry = ttk.Entry(frame)
             entry.grid(row=row, column=1)
@@ -135,6 +143,25 @@ class ServiceApp(tk.Tk):
 
                 cb.bind("<ButtonRelease-1>", _toggle_range)
                 _toggle_range()
+            if key == "wh":
+                self.house_wh_unit_var = tk.StringVar(value=WH_UNITS[0])
+                box = ttk.Combobox(
+                    frame,
+                    values=WH_UNITS,
+                    width=5,
+                    textvariable=self.house_wh_unit_var,
+                    state="readonly",
+                )
+                box.grid(row=row, column=2)
+
+                def _update_wh(*_):
+                    if self.house_wh_unit_var.get() == "gal":
+                        entry.config(values=WH_GALLON_SIZES)
+                    else:
+                        entry.config(values=())
+
+                box.bind("<<ComboboxSelected>>", _update_wh)
+                _update_wh()
 
         # Unit selector for heating input
         self.house_heat_unit_var = tk.StringVar(value=HEAT_UNITS[0])
@@ -217,6 +244,9 @@ class ServiceApp(tk.Tk):
             )
             if heat_kw is not None and self.house_heat_unit_var.get() == "tons":
                 heat_kw *= TON_TO_KW
+            wh_val = _float_from_entry(self.house_entries["wh"])
+            if wh_val is not None and self.house_wh_unit_var.get() == "gal":
+                wh_val = GALLON_TO_KW.get(int(wh_val))
             dw = Dwelling(
                 floor_area_m2=float(self.house_entries["floor"].get()),
                 heat_kw=heat_kw,
@@ -227,7 +257,7 @@ class ServiceApp(tk.Tk):
                     _float_from_entry(self.house_entries["dryer"]), "dryer_kw"
                 ),
                 water_heater_kw=pos_or_none(
-                    _float_from_entry(self.house_entries["wh"]), "water_heater_kw"
+                    wh_val, "water_heater_kw"
                 ),
                 extra_loads=[
                     (
@@ -293,6 +323,7 @@ class ServiceApp(tk.Tk):
         self.duplex_hvac_vars: list[tk.StringVar] = []
         self.duplex_heat_unit_vars: list[tk.StringVar] = []
         self.duplex_range_vars: list[tk.BooleanVar] = []
+        self.duplex_wh_unit_vars: list[tk.StringVar] = []
         self.duplex_extra_frames: list[ttk.LabelFrame] = []
         self.duplex_extra_rows: list[list[tuple[ttk.Entry, ttk.Entry]]] = []
         for col in range(2):
@@ -304,6 +335,10 @@ class ServiceApp(tk.Tk):
                 if key == "ev":
                     entry = ttk.Combobox(lf, values=EV_AMPS)
                     entry.insert(0, "32")
+                elif key == "dryer":
+                    entry = ttk.Combobox(lf, values=DRYER_KW_OPTIONS)
+                elif key == "wh":
+                    entry = ttk.Combobox(lf)
                 else:
                     entry = ttk.Entry(lf)
                 entry.grid(row=row, column=1)
@@ -323,6 +358,26 @@ class ServiceApp(tk.Tk):
                     cb.bind("<ButtonRelease-1>", _toggle)
                     _toggle()
                     self.duplex_range_vars.append(rng_var)
+                if key == "wh":
+                    wh_unit_var = tk.StringVar(value=WH_UNITS[0])
+                    box = ttk.Combobox(
+                        lf,
+                        values=WH_UNITS,
+                        width=5,
+                        textvariable=wh_unit_var,
+                        state="readonly",
+                    )
+                    box.grid(row=row, column=2)
+
+                    def _update_wh(*_):
+                        if wh_unit_var.get() == "gal":
+                            entry.config(values=WH_GALLON_SIZES)
+                        else:
+                            entry.config(values=())
+
+                    box.bind("<<ComboboxSelected>>", _update_wh)
+                    _update_wh()
+                    self.duplex_wh_unit_vars.append(wh_unit_var)
             # Unit selector for heating
             heat_unit_var = tk.StringVar(value=HEAT_UNITS[0])
             box = ttk.Combobox(
@@ -399,6 +454,9 @@ class ServiceApp(tk.Tk):
         heat_kw = pos_or_none(_float_from_entry(entries["heat"]), "heat_kw")
         if heat_kw is not None and self.duplex_heat_unit_vars[idx].get() == "tons":
             heat_kw *= TON_TO_KW
+        wh_val = _float_from_entry(entries["wh"])
+        if wh_val is not None and self.duplex_wh_unit_vars[idx].get() == "gal":
+            wh_val = GALLON_TO_KW.get(int(wh_val))
         return Dwelling(
             floor_area_m2=float(entries["floor"].get()),
             heat_kw=heat_kw,
@@ -406,9 +464,7 @@ class ServiceApp(tk.Tk):
             range_kw=_float_from_entry(entries["range"]) or 12.0,
             has_range=self.duplex_range_vars[idx].get(),
             dryer_kw=pos_or_none(_float_from_entry(entries["dryer"]), "dryer_kw"),
-            water_heater_kw=pos_or_none(
-                _float_from_entry(entries["wh"]), "water_heater_kw"
-            ),
+            water_heater_kw=pos_or_none(wh_val, "water_heater_kw"),
             extra_loads=[
                 (
                     l.get() or "Load",
@@ -496,6 +552,7 @@ class ServiceApp(tk.Tk):
         self.triplex_hvac_vars: list[tk.StringVar] = []
         self.triplex_heat_unit_vars: list[tk.StringVar] = []
         self.triplex_range_vars: list[tk.BooleanVar] = []
+        self.triplex_wh_unit_vars: list[tk.StringVar] = []
         self.triplex_extra_frames: list[ttk.LabelFrame] = []
         self.triplex_extra_rows: list[list[tuple[ttk.Entry, ttk.Entry]]] = []
         for col in range(3):
@@ -507,6 +564,10 @@ class ServiceApp(tk.Tk):
                 if key == "ev":
                     entry = ttk.Combobox(lf, values=EV_AMPS)
                     entry.insert(0, "32")
+                elif key == "dryer":
+                    entry = ttk.Combobox(lf, values=DRYER_KW_OPTIONS)
+                elif key == "wh":
+                    entry = ttk.Combobox(lf)
                 else:
                     entry = ttk.Entry(lf)
                 entry.grid(row=row, column=1)
@@ -526,6 +587,26 @@ class ServiceApp(tk.Tk):
                     cb.bind("<ButtonRelease-1>", _tr_toggle)
                     _tr_toggle()
                     self.triplex_range_vars.append(rng_var)
+                if key == "wh":
+                    wh_unit_var = tk.StringVar(value=WH_UNITS[0])
+                    box = ttk.Combobox(
+                        lf,
+                        values=WH_UNITS,
+                        width=5,
+                        textvariable=wh_unit_var,
+                        state="readonly",
+                    )
+                    box.grid(row=row, column=2)
+
+                    def _update_wh(*_):
+                        if wh_unit_var.get() == "gal":
+                            entry.config(values=WH_GALLON_SIZES)
+                        else:
+                            entry.config(values=())
+
+                    box.bind("<<ComboboxSelected>>", _update_wh)
+                    _update_wh()
+                    self.triplex_wh_unit_vars.append(wh_unit_var)
             heat_unit_var = tk.StringVar(value=HEAT_UNITS[0])
             box = ttk.Combobox(
                 lf,
@@ -600,6 +681,9 @@ class ServiceApp(tk.Tk):
         heat_kw = pos_or_none(_float_from_entry(entries["heat"]), "heat_kw")
         if heat_kw is not None and self.triplex_heat_unit_vars[idx].get() == "tons":
             heat_kw *= TON_TO_KW
+        wh_val = _float_from_entry(entries["wh"])
+        if wh_val is not None and self.triplex_wh_unit_vars[idx].get() == "gal":
+            wh_val = GALLON_TO_KW.get(int(wh_val))
         return Dwelling(
             floor_area_m2=float(entries["floor"].get()),
             heat_kw=heat_kw,
@@ -607,9 +691,7 @@ class ServiceApp(tk.Tk):
             range_kw=_float_from_entry(entries["range"]) or 12.0,
             has_range=self.triplex_range_vars[idx].get(),
             dryer_kw=pos_or_none(_float_from_entry(entries["dryer"]), "dryer_kw"),
-            water_heater_kw=pos_or_none(
-                _float_from_entry(entries["wh"]), "water_heater_kw"
-            ),
+            water_heater_kw=pos_or_none(wh_val, "water_heater_kw"),
             extra_loads=[
                 (
                     l.get() or "Load",
@@ -698,6 +780,7 @@ class ServiceApp(tk.Tk):
         self.apartment_hvac_vars: list[tk.StringVar] = []
         self.apartment_heat_unit_vars: list[tk.StringVar] = []
         self.apartment_range_vars: list[tk.BooleanVar] = []
+        self.apartment_wh_unit_vars: list[tk.StringVar] = []
         self.apartment_extra_frames: list[ttk.LabelFrame] = []
         self.apartment_extra_rows: list[list[tuple[ttk.Entry, ttk.Entry]]] = []
 
@@ -722,6 +805,10 @@ class ServiceApp(tk.Tk):
                 if key == "ev":
                     ent = ttk.Combobox(lf, values=EV_AMPS)
                     ent.insert(0, "32")
+                elif key == "dryer":
+                    ent = ttk.Combobox(lf, values=DRYER_KW_OPTIONS)
+                elif key == "wh":
+                    ent = ttk.Combobox(lf)
                 else:
                     ent = ttk.Entry(lf)
                 ent.grid(row=row, column=1)
@@ -741,6 +828,26 @@ class ServiceApp(tk.Tk):
                     cb.bind("<ButtonRelease-1>", lambda _e: _toggle())
                     _toggle()
                     self.apartment_range_vars.append(rng_var)
+                if key == "wh":
+                    wh_unit_var = tk.StringVar(value=WH_UNITS[0])
+                    box = ttk.Combobox(
+                        lf,
+                        values=WH_UNITS,
+                        width=5,
+                        textvariable=wh_unit_var,
+                        state="readonly",
+                    )
+                    box.grid(row=row, column=2)
+
+                    def _update_wh(*_):
+                        if wh_unit_var.get() == "gal":
+                            ent.config(values=WH_GALLON_SIZES)
+                        else:
+                            ent.config(values=())
+
+                    box.bind("<<ComboboxSelected>>", _update_wh)
+                    _update_wh()
+                    self.apartment_wh_unit_vars.append(wh_unit_var)
             heat_unit_var = tk.StringVar(value=HEAT_UNITS[0])
             box = ttk.Combobox(
                 lf,
@@ -813,6 +920,7 @@ class ServiceApp(tk.Tk):
         self.apartment_hvac_vars.pop()
         self.apartment_heat_unit_vars.pop()
         self.apartment_range_vars.pop()
+        self.apartment_wh_unit_vars.pop()
         self.apartment_extra_rows.pop()
         self.apartment_extra_frames.pop()
 
@@ -823,6 +931,9 @@ class ServiceApp(tk.Tk):
         heat_kw = pos_or_none(_float_from_entry(entries["heat"]), "heat_kw")
         if heat_kw is not None and self.apartment_heat_unit_vars[idx].get() == "tons":
             heat_kw *= TON_TO_KW
+        wh_val = _float_from_entry(entries["wh"])
+        if wh_val is not None and self.apartment_wh_unit_vars[idx].get() == "gal":
+            wh_val = GALLON_TO_KW.get(int(wh_val))
         return Dwelling(
             floor_area_m2=float(entries["floor"].get()),
             heat_kw=heat_kw,
@@ -830,7 +941,7 @@ class ServiceApp(tk.Tk):
             range_kw=_float_from_entry(entries["range"]) or 12.0,
             has_range=self.apartment_range_vars[idx].get(),
             dryer_kw=pos_or_none(_float_from_entry(entries["dryer"]), "dryer_kw"),
-            water_heater_kw=pos_or_none(_float_from_entry(entries["wh"]), "water_heater_kw"),
+            water_heater_kw=pos_or_none(wh_val, "water_heater_kw"),
             extra_loads=[
                 (l.get() or "Load", pos_or_none(_float_from_entry(k), "extra_load") or 0.0)
                 for l, k in self.apartment_extra_rows[idx]
