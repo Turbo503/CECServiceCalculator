@@ -803,7 +803,7 @@ class ServiceApp(tk.Tk):
         def _add_unit() -> None:
             idx = len(self.apartment_entries)
             lf = ttk.LabelFrame(self.apartment_container, text=f"Unit {idx + 1}")
-            lf.grid(row=0, column=idx, padx=5, pady=5, sticky="n")
+            lf.grid(row=idx // 5, column=idx % 5, padx=5, pady=5, sticky="n")
             self.apartment_frames.append(lf)
             entries: dict[str, ttk.Entry] = {}
             for row, (label, key) in enumerate(fields):
@@ -910,6 +910,7 @@ class ServiceApp(tk.Tk):
             )
             _add_extra_row()
             self.apartment_extra_rows.append(rows)
+            self._update_apartment_grid()
 
         for _ in range(4):
             _add_unit()
@@ -932,6 +933,11 @@ class ServiceApp(tk.Tk):
             row=4, column=0, columnspan=2
         )
 
+    def _update_apartment_grid(self) -> None:
+        """Reposition apartment unit frames in rows of five."""
+        for idx, frame in enumerate(self.apartment_frames):
+            frame.grid_configure(row=idx // 5, column=idx % 5)
+
     def _remove_apartment_unit(self) -> None:
         if not self.apartment_frames:
             return
@@ -945,6 +951,7 @@ class ServiceApp(tk.Tk):
         self.apartment_wh_unit_vars.pop()
         self.apartment_extra_rows.pop()
         self.apartment_extra_frames.pop()
+        self._update_apartment_grid()
 
     def _make_apartment_unit(self, entries: dict[str, ttk.Entry], idx: int) -> Dwelling:
         ac_kw = None
