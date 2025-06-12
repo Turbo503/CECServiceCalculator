@@ -58,9 +58,7 @@ def _describe_unit(inputs: dict[str, Any], details: dict[str, int]) -> list[str]
             f"Extra area: ({extra_area:.0f} m² /90 -> {units}) x 1000 W = {details['extra_area_load']} W"
         )
     if inputs.get("has_range"):
-        lines.append(
-            f"Range: {inputs['range_kw']} kW -> {details['range_load']} W"
-        )
+        lines.append(f"Range: {inputs['range_kw']} kW -> {details['range_load']} W")
     else:
         lines.append("No range")
     if inputs.get("has_ev"):
@@ -154,11 +152,11 @@ class ServiceApp(tk.Tk):
                 )
                 box.grid(row=row, column=2)
 
-                def _update_wh(*_):
+                def _update_wh(e=None, ent=entry):
                     if self.house_wh_unit_var.get() == "gal":
-                        entry.config(values=WH_GALLON_SIZES)
+                        ent.config(values=WH_GALLON_SIZES)
                     else:
-                        entry.config(values=())
+                        ent.config(values=())
 
                 box.bind("<<ComboboxSelected>>", _update_wh)
                 _update_wh()
@@ -205,7 +203,9 @@ class ServiceApp(tk.Tk):
 
         # Extra loads (>1.5 kW)
         self.house_extra_frame = ttk.LabelFrame(frame, text="Extra Loads >1.5 kW")
-        self.house_extra_frame.grid(row=len(labels) + 2, column=0, columnspan=3, pady=5, sticky="w")
+        self.house_extra_frame.grid(
+            row=len(labels) + 2, column=0, columnspan=3, pady=5, sticky="w"
+        )
         self.house_extra_rows: list[tuple[ttk.Entry, ttk.Entry]] = []
 
         def _add_extra_row():
@@ -216,7 +216,9 @@ class ServiceApp(tk.Tk):
             kw_entry.grid(row=row, column=1)
             self.house_extra_rows.append((lbl_entry, kw_entry))
 
-        ttk.Button(self.house_extra_frame, text="Add", command=_add_extra_row).grid(row=0, column=2)
+        ttk.Button(self.house_extra_frame, text="Add", command=_add_extra_row).grid(
+            row=0, column=2
+        )
         _add_extra_row()
 
         ttk.Button(frame, text="Calculate", command=self._calc_house).grid(
@@ -256,9 +258,7 @@ class ServiceApp(tk.Tk):
                 dryer_kw=pos_or_none(
                     _float_from_entry(self.house_entries["dryer"]), "dryer_kw"
                 ),
-                water_heater_kw=pos_or_none(
-                    wh_val, "water_heater_kw"
-                ),
+                water_heater_kw=pos_or_none(wh_val, "water_heater_kw"),
                 extra_loads=[
                     (
                         lbl.get() or "Load",
@@ -348,12 +348,12 @@ class ServiceApp(tk.Tk):
                     cb = ttk.Checkbutton(lf, text="Has Range", variable=rng_var)
                     cb.grid(row=row, column=2, sticky="w")
 
-                    def _toggle(*_):
-                        if rng_var.get():
-                            entry.config(state="normal")
+                    def _toggle(e=None, ent=entry, var=rng_var):
+                        if var.get():
+                            ent.config(state="normal")
                         else:
-                            entry.delete(0, tk.END)
-                            entry.config(state="disabled")
+                            ent.delete(0, tk.END)
+                            ent.config(state="disabled")
 
                     cb.bind("<ButtonRelease-1>", _toggle)
                     _toggle()
@@ -369,11 +369,11 @@ class ServiceApp(tk.Tk):
                     )
                     box.grid(row=row, column=2)
 
-                    def _update_wh(*_):
+                    def _update_wh(e=None, ent=entry):
                         if wh_unit_var.get() == "gal":
-                            entry.config(values=WH_GALLON_SIZES)
+                            ent.config(values=WH_GALLON_SIZES)
                         else:
-                            entry.config(values=())
+                            ent.config(values=())
 
                     box.bind("<<ComboboxSelected>>", _update_wh)
                     _update_wh()
@@ -418,7 +418,9 @@ class ServiceApp(tk.Tk):
             self.duplex_entries.append(entries)
 
             extra_frame = ttk.LabelFrame(lf, text="Extra Loads >1.5 kW")
-            extra_frame.grid(row=len(fields) + 2, column=0, columnspan=3, pady=5, sticky="w")
+            extra_frame.grid(
+                row=len(fields) + 2, column=0, columnspan=3, pady=5, sticky="w"
+            )
             self.duplex_extra_frames.append(extra_frame)
             rows: list[tuple[ttk.Entry, ttk.Entry]] = []
 
@@ -430,7 +432,9 @@ class ServiceApp(tk.Tk):
                 k_ent.grid(row=r, column=1)
                 lst.append((l_ent, k_ent))
 
-            ttk.Button(extra_frame, text="Add", command=_add_extra_row_d).grid(row=0, column=2)
+            ttk.Button(extra_frame, text="Add", command=_add_extra_row_d).grid(
+                row=0, column=2
+            )
             _add_extra_row_d()
             self.duplex_extra_rows.append(rows)
 
@@ -577,12 +581,12 @@ class ServiceApp(tk.Tk):
                     cb = ttk.Checkbutton(lf, text="Has Range", variable=rng_var)
                     cb.grid(row=row, column=2, sticky="w")
 
-                    def _tr_toggle(*_):
-                        if rng_var.get():
-                            entry.config(state="normal")
+                    def _tr_toggle(e=None, ent=entry, var=rng_var):
+                        if var.get():
+                            ent.config(state="normal")
                         else:
-                            entry.delete(0, tk.END)
-                            entry.config(state="disabled")
+                            ent.delete(0, tk.END)
+                            ent.config(state="disabled")
 
                     cb.bind("<ButtonRelease-1>", _tr_toggle)
                     _tr_toggle()
@@ -598,11 +602,11 @@ class ServiceApp(tk.Tk):
                     )
                     box.grid(row=row, column=2)
 
-                    def _update_wh(*_):
+                    def _update_wh(e=None, ent=entry):
                         if wh_unit_var.get() == "gal":
-                            entry.config(values=WH_GALLON_SIZES)
+                            ent.config(values=WH_GALLON_SIZES)
                         else:
-                            entry.config(values=())
+                            ent.config(values=())
 
                     box.bind("<<ComboboxSelected>>", _update_wh)
                     _update_wh()
@@ -645,7 +649,9 @@ class ServiceApp(tk.Tk):
             self.triplex_entries.append(entries)
 
             extra_frame = ttk.LabelFrame(lf, text="Extra Loads >1.5 kW")
-            extra_frame.grid(row=len(fields) + 2, column=0, columnspan=3, pady=5, sticky="w")
+            extra_frame.grid(
+                row=len(fields) + 2, column=0, columnspan=3, pady=5, sticky="w"
+            )
             rows: list[tuple[ttk.Entry, ttk.Entry]] = []
 
             def _add_row(frame=extra_frame, lst=rows):
@@ -839,7 +845,7 @@ class ServiceApp(tk.Tk):
                     )
                     box.grid(row=row, column=2)
 
-                    def _update_wh(*_):
+                    def _update_wh(e=None, ent=ent):
                         if wh_unit_var.get() == "gal":
                             ent.config(values=WH_GALLON_SIZES)
                         else:
@@ -860,7 +866,9 @@ class ServiceApp(tk.Tk):
             self.apartment_heat_unit_vars.append(heat_unit_var)
             hv_var = tk.StringVar(value=HVAC_OPTIONS[1])
             ttk.Label(lf, text="HVAC Type").grid(row=len(fields), column=0, sticky="w")
-            hv_box = ttk.Combobox(lf, values=HVAC_OPTIONS, textvariable=hv_var, state="readonly")
+            hv_box = ttk.Combobox(
+                lf, values=HVAC_OPTIONS, textvariable=hv_var, state="readonly"
+            )
             hv_box.grid(row=len(fields), column=1)
 
             def _update_hvac(e=None, ent=entries["ac"], var=hv_var, unit_box=box):
@@ -883,7 +891,9 @@ class ServiceApp(tk.Tk):
             self.apartment_hvac_vars.append(hv_var)
             self.apartment_entries.append(entries)
             extra_frame = ttk.LabelFrame(lf, text="Extra Loads >1.5 kW")
-            extra_frame.grid(row=len(fields) + 2, column=0, columnspan=3, pady=5, sticky="w")
+            extra_frame.grid(
+                row=len(fields) + 2, column=0, columnspan=3, pady=5, sticky="w"
+            )
             self.apartment_extra_frames.append(extra_frame)
             rows: list[tuple[ttk.Entry, ttk.Entry]] = []
 
@@ -895,20 +905,32 @@ class ServiceApp(tk.Tk):
                 ke.grid(row=r, column=1)
                 lst.append((le, ke))
 
-            ttk.Button(extra_frame, text="Add", command=_add_extra_row).grid(row=0, column=2)
+            ttk.Button(extra_frame, text="Add", command=_add_extra_row).grid(
+                row=0, column=2
+            )
             _add_extra_row()
             self.apartment_extra_rows.append(rows)
 
         for _ in range(4):
             _add_unit()
 
-        ttk.Button(frame, text="Add Unit", command=_add_unit).grid(row=1, column=0, pady=5)
-        ttk.Button(frame, text="Remove Unit", command=self._remove_apartment_unit).grid(row=1, column=1, pady=5)
-        ttk.Button(frame, text="Calculate", command=self._calc_apartment).grid(row=2, column=0, columnspan=2, pady=5)
-        ttk.Button(frame, text="Export PDF", command=self._export_apartment_pdf).grid(row=3, column=0, columnspan=2)
+        ttk.Button(frame, text="Add Unit", command=_add_unit).grid(
+            row=1, column=0, pady=5
+        )
+        ttk.Button(frame, text="Remove Unit", command=self._remove_apartment_unit).grid(
+            row=1, column=1, pady=5
+        )
+        ttk.Button(frame, text="Calculate", command=self._calc_apartment).grid(
+            row=2, column=0, columnspan=2, pady=5
+        )
+        ttk.Button(frame, text="Export PDF", command=self._export_apartment_pdf).grid(
+            row=3, column=0, columnspan=2
+        )
 
         self.apartment_result = tk.StringVar()
-        ttk.Label(frame, textvariable=self.apartment_result).grid(row=4, column=0, columnspan=2)
+        ttk.Label(frame, textvariable=self.apartment_result).grid(
+            row=4, column=0, columnspan=2
+        )
 
     def _remove_apartment_unit(self) -> None:
         if not self.apartment_frames:
@@ -943,7 +965,10 @@ class ServiceApp(tk.Tk):
             dryer_kw=pos_or_none(_float_from_entry(entries["dryer"]), "dryer_kw"),
             water_heater_kw=pos_or_none(wh_val, "water_heater_kw"),
             extra_loads=[
-                (l.get() or "Load", pos_or_none(_float_from_entry(k), "extra_load") or 0.0)
+                (
+                    l.get() or "Load",
+                    pos_or_none(_float_from_entry(k), "extra_load") or 0.0,
+                )
                 for l, k in self.apartment_extra_rows[idx]
                 if k.get().strip()
             ],
@@ -953,7 +978,10 @@ class ServiceApp(tk.Tk):
 
     def _calc_apartment(self) -> None:
         try:
-            units = [self._make_apartment_unit(e, i) for i, e in enumerate(self.apartment_entries)]
+            units = [
+                self._make_apartment_unit(e, i)
+                for i, e in enumerate(self.apartment_entries)
+            ]
             result = calculate_multi_demand(units)
             self.apartment_last_result = result
             self.apartment_result.set(
@@ -987,7 +1015,8 @@ class ServiceApp(tk.Tk):
                 lines.extend(
                     "  " + s
                     for s in _describe_unit(
-                        result["inputs"][f"unit_{i+1}"], result["details"][f"unit_{i+1}"]
+                        result["inputs"][f"unit_{i+1}"],
+                        result["details"][f"unit_{i+1}"],
                     )
                 )
             lines.append("Combined base:")
