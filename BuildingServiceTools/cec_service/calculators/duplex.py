@@ -1,4 +1,5 @@
 """Duplex service load calculator."""
+
 from dataclasses import asdict
 from math import ceil
 from typing import Any, Dict, Tuple
@@ -32,6 +33,7 @@ def _unit_loads(dw: Dwelling) -> Tuple[int, int, Dict[str, int]]:
 
     base = basic_load + range_load + ev_load + dryer_load + wh_load
     details["base_without_heat_ac"] = base
+    details["total_watts"] = base + heat_ac
     return base, heat_ac, details
 
 
