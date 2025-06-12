@@ -16,3 +16,6 @@ package correctly.
 The GUI allows specifying heating loads in either **kW** or **tons** when the
 HVAC type is set to *Heat Pump*. Residential heat pump sizes typically range
 from 1–5 tons (approximately 3.5–17.5&nbsp;kW).
+
+Dryer loads can be selected from common kW ratings, while water heater capacity
+may now be entered in **kW** or by choosing a standard tank size in gallons.
