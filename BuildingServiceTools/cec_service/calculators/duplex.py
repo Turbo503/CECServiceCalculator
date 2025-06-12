@@ -20,7 +20,9 @@ def _unit_loads(dw: Dwelling) -> Tuple[int, int, Dict[str, int]]:
         basic_load += extra
         details["extra_area_load"] = extra
 
-    range_load = 6000 if dw.range_kw <= 12 else int(dw.range_kw * 1000)
+    range_load = 0
+    if dw.has_range:
+        range_load = 6000 if dw.range_kw <= 12 else int(dw.range_kw * 1000)
     details["range_load"] = range_load
     ev_load = dw.ev_amps * 240 if dw.has_ev else 0
     details["ev_load"] = ev_load
@@ -28,10 +30,14 @@ def _unit_loads(dw: Dwelling) -> Tuple[int, int, Dict[str, int]]:
     details["dryer_load"] = dryer_load
     wh_load = int((dw.water_heater_kw or 0) * 1000 * 0.25)
     details["wh_load"] = wh_load
+    extra_load = 0
+    if dw.extra_loads:
+        extra_load = int(sum(kW for _lbl, kW in dw.extra_loads) * 1000 * 0.25)
+    details["extra_load"] = extra_load
     heat_ac = int(max(dw.heat_kw or 0, dw.ac_kw or 0) * 1000)
     details["heat_ac"] = heat_ac
 
-    base = basic_load + range_load + ev_load + dryer_load + wh_load
+    base = basic_load + range_load + ev_load + dryer_load + wh_load + extra_load
     details["base_without_heat_ac"] = base
     details["total_watts"] = base + heat_ac
     return base, heat_ac, details

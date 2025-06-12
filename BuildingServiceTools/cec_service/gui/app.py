@@ -50,7 +50,12 @@ def _describe_unit(inputs: dict[str, Any], details: dict[str, int]) -> list[str]
         lines.append(
             f"Extra area: ({extra_area:.0f} m² /90 -> {units}) x 1000 W = {details['extra_area_load']} W"
         )
-    lines.append(f"Range: {inputs['range_kw']} kW -> {details['range_load']} W")
+    if inputs.get("has_range"):
+        lines.append(
+            f"Range: {inputs['range_kw']} kW -> {details['range_load']} W"
+        )
+    else:
+        lines.append("No range")
     if inputs.get("has_ev"):
         lines.append(f"EVSE: {inputs['ev_amps']} A x 240 V = {details['ev_load']} W")
     if inputs.get("dryer_kw"):
@@ -61,6 +66,9 @@ def _describe_unit(inputs: dict[str, Any], details: dict[str, int]) -> list[str]
         lines.append(
             f"Water Heater: {inputs['water_heater_kw']} kW x 25% = {details['wh_load']} W"
         )
+    if inputs.get("extra_loads"):
+        for label, kw in inputs["extra_loads"]:
+            lines.append(f"{label}: {kw} kW x 25% = {int(kw*1000*0.25)} W")
     lines.append(
         f"Heat/AC: max({inputs.get('heat_kw') or 0}, {inputs.get('ac_kw') or 0}) kW x 1000 = {details['heat_ac']} W"
     )
@@ -101,6 +109,24 @@ class ServiceApp(tk.Tk):
             entry = ttk.Entry(frame)
             entry.grid(row=row, column=1)
             self.house_entries[key] = entry
+            if key == "range":
+                self.house_range_var = tk.BooleanVar(value=True)
+                cb = ttk.Checkbutton(
+                    frame,
+                    text="Has Range",
+                    variable=self.house_range_var,
+                )
+                cb.grid(row=row, column=2, sticky="w")
+
+                def _toggle_range(*_):
+                    if self.house_range_var.get():
+                        self.house_entries["range"].config(state="normal")
+                    else:
+                        self.house_entries["range"].delete(0, tk.END)
+                        self.house_entries["range"].config(state="disabled")
+
+                cb.bind("<ButtonRelease-1>", _toggle_range)
+                _toggle_range()
 
         # Unit selector for heating input
         self.house_heat_unit_var = tk.StringVar(value=HEAT_UNITS[0])
@@ -142,17 +168,33 @@ class ServiceApp(tk.Tk):
             row=len(labels) + 1, column=0, columnspan=2
         )
 
+        # Extra loads (>1.5 kW)
+        self.house_extra_frame = ttk.LabelFrame(frame, text="Extra Loads >1.5 kW")
+        self.house_extra_frame.grid(row=len(labels) + 2, column=0, columnspan=3, pady=5, sticky="w")
+        self.house_extra_rows: list[tuple[ttk.Entry, ttk.Entry]] = []
+
+        def _add_extra_row():
+            row = len(self.house_extra_rows)
+            lbl_entry = ttk.Entry(self.house_extra_frame)
+            lbl_entry.grid(row=row, column=0)
+            kw_entry = ttk.Entry(self.house_extra_frame, width=6)
+            kw_entry.grid(row=row, column=1)
+            self.house_extra_rows.append((lbl_entry, kw_entry))
+
+        ttk.Button(self.house_extra_frame, text="Add", command=_add_extra_row).grid(row=0, column=2)
+        _add_extra_row()
+
         ttk.Button(frame, text="Calculate", command=self._calc_house).grid(
-            row=len(labels) + 2, column=0, columnspan=2, pady=5
+            row=len(labels) + 3, column=0, columnspan=2, pady=5
         )
 
         ttk.Button(frame, text="Export PDF", command=self._export_house_pdf).grid(
-            row=len(labels) + 3, column=0, columnspan=2
+            row=len(labels) + 4, column=0, columnspan=2
         )
 
         self.house_result = tk.StringVar()
         ttk.Label(frame, textvariable=self.house_result).grid(
-            row=len(labels) + 4, column=0, columnspan=2
+            row=len(labels) + 5, column=0, columnspan=2
         )
 
     def _calc_house(self) -> None:
@@ -172,12 +214,21 @@ class ServiceApp(tk.Tk):
                 heat_kw=heat_kw,
                 ac_kw=ac_kw,
                 range_kw=_float_from_entry(self.house_entries["range"]) or 12.0,
+                has_range=self.house_range_var.get(),
                 dryer_kw=pos_or_none(
                     _float_from_entry(self.house_entries["dryer"]), "dryer_kw"
                 ),
                 water_heater_kw=pos_or_none(
                     _float_from_entry(self.house_entries["wh"]), "water_heater_kw"
                 ),
+                extra_loads=[
+                    (
+                        lbl.get() or "Load",
+                        pos_or_none(_float_from_entry(kw), "extra_load") or 0.0,
+                    )
+                    for lbl, kw in self.house_extra_rows
+                    if kw.get().strip()
+                ],
                 has_ev=self.house_ev_var.get(),
                 ev_amps=int(_float_from_entry(self.house_entries["ev"]) or 32),
             )
@@ -233,6 +284,9 @@ class ServiceApp(tk.Tk):
         self.duplex_ev_vars: list[tk.BooleanVar] = []
         self.duplex_hvac_vars: list[tk.StringVar] = []
         self.duplex_heat_unit_vars: list[tk.StringVar] = []
+        self.duplex_range_vars: list[tk.BooleanVar] = []
+        self.duplex_extra_frames: list[ttk.LabelFrame] = []
+        self.duplex_extra_rows: list[list[tuple[ttk.Entry, ttk.Entry]]] = []
         for col in range(2):
             lf = ttk.LabelFrame(frame, text=f"Unit {col + 1}")
             lf.grid(row=0, column=col, padx=5, pady=5, sticky="n")
@@ -242,6 +296,21 @@ class ServiceApp(tk.Tk):
                 entry = ttk.Entry(lf)
                 entry.grid(row=row, column=1)
                 entries[key] = entry
+                if key == "range":
+                    rng_var = tk.BooleanVar(value=True)
+                    cb = ttk.Checkbutton(lf, text="Has Range", variable=rng_var)
+                    cb.grid(row=row, column=2, sticky="w")
+
+                    def _toggle(*_):
+                        if rng_var.get():
+                            entry.config(state="normal")
+                        else:
+                            entry.delete(0, tk.END)
+                            entry.config(state="disabled")
+
+                    cb.bind("<ButtonRelease-1>", _toggle)
+                    _toggle()
+                    self.duplex_range_vars.append(rng_var)
             # Unit selector for heating
             heat_unit_var = tk.StringVar(value=HEAT_UNITS[0])
             box = ttk.Combobox(
@@ -281,6 +350,23 @@ class ServiceApp(tk.Tk):
             self.duplex_hvac_vars.append(hv_var)
             self.duplex_entries.append(entries)
 
+            extra_frame = ttk.LabelFrame(lf, text="Extra Loads >1.5 kW")
+            extra_frame.grid(row=len(fields) + 2, column=0, columnspan=3, pady=5, sticky="w")
+            self.duplex_extra_frames.append(extra_frame)
+            rows: list[tuple[ttk.Entry, ttk.Entry]] = []
+
+            def _add_extra_row_d(col_idx=col, frame=extra_frame, lst=rows):
+                r = len(lst)
+                l_ent = ttk.Entry(frame)
+                l_ent.grid(row=r, column=0)
+                k_ent = ttk.Entry(frame, width=6)
+                k_ent.grid(row=r, column=1)
+                lst.append((l_ent, k_ent))
+
+            ttk.Button(extra_frame, text="Add", command=_add_extra_row_d).grid(row=0, column=2)
+            _add_extra_row_d()
+            self.duplex_extra_rows.append(rows)
+
         ttk.Button(frame, text="Calculate", command=self._calc_duplex).grid(
             row=1, column=0, columnspan=2, pady=5
         )
@@ -306,10 +392,19 @@ class ServiceApp(tk.Tk):
             heat_kw=heat_kw,
             ac_kw=ac_kw,
             range_kw=_float_from_entry(entries["range"]) or 12.0,
+            has_range=self.duplex_range_vars[idx].get(),
             dryer_kw=pos_or_none(_float_from_entry(entries["dryer"]), "dryer_kw"),
             water_heater_kw=pos_or_none(
                 _float_from_entry(entries["wh"]), "water_heater_kw"
             ),
+            extra_loads=[
+                (
+                    l.get() or "Load",
+                    pos_or_none(_float_from_entry(k), "extra_load") or 0.0,
+                )
+                for l, k in self.duplex_extra_rows[idx]
+                if k.get().strip()
+            ],
             has_ev=self.duplex_ev_vars[idx].get(),
             ev_amps=int(_float_from_entry(entries["ev"]) or 32),
         )
@@ -388,6 +483,9 @@ class ServiceApp(tk.Tk):
         self.triplex_ev_vars: list[tk.BooleanVar] = []
         self.triplex_hvac_vars: list[tk.StringVar] = []
         self.triplex_heat_unit_vars: list[tk.StringVar] = []
+        self.triplex_range_vars: list[tk.BooleanVar] = []
+        self.triplex_extra_frames: list[ttk.LabelFrame] = []
+        self.triplex_extra_rows: list[list[tuple[ttk.Entry, ttk.Entry]]] = []
         for col in range(3):
             lf = ttk.LabelFrame(frame, text=f"Unit {col + 1}")
             lf.grid(row=0, column=col, padx=5, pady=5, sticky="n")
@@ -397,6 +495,21 @@ class ServiceApp(tk.Tk):
                 entry = ttk.Entry(lf)
                 entry.grid(row=row, column=1)
                 entries[key] = entry
+                if key == "range":
+                    rng_var = tk.BooleanVar(value=True)
+                    cb = ttk.Checkbutton(lf, text="Has Range", variable=rng_var)
+                    cb.grid(row=row, column=2, sticky="w")
+
+                    def _tr_toggle(*_):
+                        if rng_var.get():
+                            entry.config(state="normal")
+                        else:
+                            entry.delete(0, tk.END)
+                            entry.config(state="disabled")
+
+                    cb.bind("<ButtonRelease-1>", _tr_toggle)
+                    _tr_toggle()
+                    self.triplex_range_vars.append(rng_var)
             heat_unit_var = tk.StringVar(value=HEAT_UNITS[0])
             box = ttk.Combobox(
                 lf,
@@ -434,6 +547,23 @@ class ServiceApp(tk.Tk):
             self.triplex_hvac_vars.append(hv_var)
             self.triplex_entries.append(entries)
 
+            extra_frame = ttk.LabelFrame(lf, text="Extra Loads >1.5 kW")
+            extra_frame.grid(row=len(fields) + 2, column=0, columnspan=3, pady=5, sticky="w")
+            rows: list[tuple[ttk.Entry, ttk.Entry]] = []
+
+            def _add_row(frame=extra_frame, lst=rows):
+                r = len(lst)
+                le = ttk.Entry(frame)
+                le.grid(row=r, column=0)
+                ke = ttk.Entry(frame, width=6)
+                ke.grid(row=r, column=1)
+                lst.append((le, ke))
+
+            ttk.Button(extra_frame, text="Add", command=_add_row).grid(row=0, column=2)
+            _add_row()
+            self.triplex_extra_frames.append(extra_frame)
+            self.triplex_extra_rows.append(rows)
+
         ttk.Button(frame, text="Calculate", command=self._calc_triplex).grid(
             row=1, column=0, columnspan=3, pady=5
         )
@@ -459,10 +589,19 @@ class ServiceApp(tk.Tk):
             heat_kw=heat_kw,
             ac_kw=ac_kw,
             range_kw=_float_from_entry(entries["range"]) or 12.0,
+            has_range=self.triplex_range_vars[idx].get(),
             dryer_kw=pos_or_none(_float_from_entry(entries["dryer"]), "dryer_kw"),
             water_heater_kw=pos_or_none(
                 _float_from_entry(entries["wh"]), "water_heater_kw"
             ),
+            extra_loads=[
+                (
+                    l.get() or "Load",
+                    pos_or_none(_float_from_entry(k), "extra_load") or 0.0,
+                )
+                for l, k in self.triplex_extra_rows[idx]
+                if k.get().strip()
+            ],
             has_ev=self.triplex_ev_vars[idx].get(),
             ev_amps=int(_float_from_entry(entries["ev"]) or 32),
         )
