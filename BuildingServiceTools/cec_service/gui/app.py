@@ -14,6 +14,7 @@ HVAC_OPTIONS = ("Heating & AC", "Heat Pump")
 # Units for specifying heat pump capacity
 HEAT_UNITS = ("kW", "tons")
 TON_TO_KW = 3.516
+EV_AMPS = (16, 24, 30, 40, 48, 60, 64, 70, 80)
 
 # Allow running this file directly by adjusting sys.path for relative imports
 if __package__ in {None, ""}:
@@ -22,6 +23,7 @@ if __package__ in {None, ""}:
     from cec_service.calculators.duplex import calculate_duplex_demand
     from cec_service.calculators.house import calculate_demand
     from cec_service.calculators.triplex import calculate_triplex_demand
+    from cec_service.calculators.apartment import calculate_multi_demand
     from cec_service.models import Dwelling
     from cec_service.utils.validation import ValidationError, pos_or_none
     from cec_service.utils.pdf import simple_pdf
@@ -29,6 +31,7 @@ else:
     from ..calculators.duplex import calculate_duplex_demand
     from ..calculators.house import calculate_demand
     from ..calculators.triplex import calculate_triplex_demand
+    from ..calculators.apartment import calculate_multi_demand
     from ..models import Dwelling
     from ..utils.validation import ValidationError, pos_or_none
     from ..utils.pdf import simple_pdf
@@ -88,6 +91,7 @@ class ServiceApp(tk.Tk):
         self._init_house_tab(notebook)
         self._init_duplex_tab(notebook)
         self._init_triplex_tab(notebook)
+        self._init_apartment_tab(notebook)
 
     # House Tab
     def _init_house_tab(self, notebook: ttk.Notebook) -> None:
@@ -106,7 +110,11 @@ class ServiceApp(tk.Tk):
         self.house_entries: dict[str, ttk.Entry] = {}
         for row, (label, key) in enumerate(labels):
             ttk.Label(frame, text=label).grid(row=row, column=0, sticky="w")
-            entry = ttk.Entry(frame)
+            if key == "ev":
+                entry = ttk.Combobox(frame, values=EV_AMPS)
+                entry.insert(0, "32")
+            else:
+                entry = ttk.Entry(frame)
             entry.grid(row=row, column=1)
             self.house_entries[key] = entry
             if key == "range":
@@ -140,7 +148,7 @@ class ServiceApp(tk.Tk):
         self.house_heat_unit_box.grid(row=1, column=2)
 
         # HVAC type selector
-        self.house_hvac_var = tk.StringVar(value=HVAC_OPTIONS[0])
+        self.house_hvac_var = tk.StringVar(value=HVAC_OPTIONS[1])
         ttk.Label(frame, text="HVAC Type").grid(row=len(labels), column=0, sticky="w")
         hvac_box = ttk.Combobox(
             frame,
@@ -293,7 +301,11 @@ class ServiceApp(tk.Tk):
             entries: dict[str, ttk.Entry] = {}
             for row, (label, key) in enumerate(fields):
                 ttk.Label(lf, text=label).grid(row=row, column=0, sticky="w")
-                entry = ttk.Entry(lf)
+                if key == "ev":
+                    entry = ttk.Combobox(lf, values=EV_AMPS)
+                    entry.insert(0, "32")
+                else:
+                    entry = ttk.Entry(lf)
                 entry.grid(row=row, column=1)
                 entries[key] = entry
                 if key == "range":
@@ -322,7 +334,7 @@ class ServiceApp(tk.Tk):
             )
             box.grid(row=1, column=2)
             self.duplex_heat_unit_vars.append(heat_unit_var)
-            hv_var = tk.StringVar(value=HVAC_OPTIONS[0])
+            hv_var = tk.StringVar(value=HVAC_OPTIONS[1])
             ttk.Label(lf, text="HVAC Type").grid(row=len(fields), column=0, sticky="w")
             hv_box = ttk.Combobox(
                 lf, values=HVAC_OPTIONS, textvariable=hv_var, state="readonly"
@@ -492,7 +504,11 @@ class ServiceApp(tk.Tk):
             entries: dict[str, ttk.Entry] = {}
             for row, (label, key) in enumerate(fields):
                 ttk.Label(lf, text=label).grid(row=row, column=0, sticky="w")
-                entry = ttk.Entry(lf)
+                if key == "ev":
+                    entry = ttk.Combobox(lf, values=EV_AMPS)
+                    entry.insert(0, "32")
+                else:
+                    entry = ttk.Entry(lf)
                 entry.grid(row=row, column=1)
                 entries[key] = entry
                 if key == "range":
@@ -520,7 +536,7 @@ class ServiceApp(tk.Tk):
             )
             box.grid(row=1, column=2)
             self.triplex_heat_unit_vars.append(heat_unit_var)
-            hv_var = tk.StringVar(value=HVAC_OPTIONS[0])
+            hv_var = tk.StringVar(value=HVAC_OPTIONS[1])
             ttk.Label(lf, text="HVAC Type").grid(row=len(fields), column=0, sticky="w")
             hv_box = ttk.Combobox(
                 lf, values=HVAC_OPTIONS, textvariable=hv_var, state="readonly"
@@ -660,6 +676,209 @@ class ServiceApp(tk.Tk):
                     result["inputs"]["unit_c"], result["details"]["unit_c"]
                 )
             )
+            lines.append("Combined base:")
+            for k, v in result["details"]["combined_base"].items():
+                lines.append(f"  {k}: {v}")
+            lines.append(f"Total heat: {result['details']['total_heat']} W")
+            simple_pdf(lines, path)
+        except (ValueError, ValidationError) as err:
+            messagebox.showerror("Error", str(err))
+
+    # Apartment Tab
+    def _init_apartment_tab(self, notebook: ttk.Notebook) -> None:
+        frame = ttk.Frame(notebook)
+        notebook.add(frame, text="Apartment")
+
+        self.apartment_container = ttk.Frame(frame)
+        self.apartment_container.grid(row=0, column=0, columnspan=4, sticky="w")
+
+        self.apartment_frames: list[ttk.LabelFrame] = []
+        self.apartment_entries: list[dict[str, ttk.Entry]] = []
+        self.apartment_ev_vars: list[tk.BooleanVar] = []
+        self.apartment_hvac_vars: list[tk.StringVar] = []
+        self.apartment_heat_unit_vars: list[tk.StringVar] = []
+        self.apartment_range_vars: list[tk.BooleanVar] = []
+        self.apartment_extra_frames: list[ttk.LabelFrame] = []
+        self.apartment_extra_rows: list[list[tuple[ttk.Entry, ttk.Entry]]] = []
+
+        fields = [
+            ("Floor Area (m²)", "floor"),
+            ("Heating kW", "heat"),
+            ("AC kW", "ac"),
+            ("Range kW", "range"),
+            ("Dryer kW", "dryer"),
+            ("Water Heater kW", "wh"),
+            ("EV Amps", "ev"),
+        ]
+
+        def _add_unit() -> None:
+            idx = len(self.apartment_entries)
+            lf = ttk.LabelFrame(self.apartment_container, text=f"Unit {idx + 1}")
+            lf.grid(row=0, column=idx, padx=5, pady=5, sticky="n")
+            self.apartment_frames.append(lf)
+            entries: dict[str, ttk.Entry] = {}
+            for row, (label, key) in enumerate(fields):
+                ttk.Label(lf, text=label).grid(row=row, column=0, sticky="w")
+                if key == "ev":
+                    ent = ttk.Combobox(lf, values=EV_AMPS)
+                    ent.insert(0, "32")
+                else:
+                    ent = ttk.Entry(lf)
+                ent.grid(row=row, column=1)
+                entries[key] = ent
+                if key == "range":
+                    rng_var = tk.BooleanVar(value=True)
+                    cb = ttk.Checkbutton(lf, text="Has Range", variable=rng_var)
+                    cb.grid(row=row, column=2, sticky="w")
+
+                    def _toggle(ent=ent, var=rng_var):
+                        if var.get():
+                            ent.config(state="normal")
+                        else:
+                            ent.delete(0, tk.END)
+                            ent.config(state="disabled")
+
+                    cb.bind("<ButtonRelease-1>", lambda _e: _toggle())
+                    _toggle()
+                    self.apartment_range_vars.append(rng_var)
+            heat_unit_var = tk.StringVar(value=HEAT_UNITS[0])
+            box = ttk.Combobox(
+                lf,
+                values=HEAT_UNITS,
+                width=5,
+                textvariable=heat_unit_var,
+                state="readonly",
+            )
+            box.grid(row=1, column=2)
+            self.apartment_heat_unit_vars.append(heat_unit_var)
+            hv_var = tk.StringVar(value=HVAC_OPTIONS[1])
+            ttk.Label(lf, text="HVAC Type").grid(row=len(fields), column=0, sticky="w")
+            hv_box = ttk.Combobox(lf, values=HVAC_OPTIONS, textvariable=hv_var, state="readonly")
+            hv_box.grid(row=len(fields), column=1)
+
+            def _update_hvac(e=None, ent=entries["ac"], var=hv_var, unit_box=box):
+                if var.get() == "Heat Pump":
+                    ent.delete(0, tk.END)
+                    ent.config(state="disabled")
+                    unit_box.config(state="readonly")
+                else:
+                    ent.config(state="normal")
+                    unit_box.config(state="disabled")
+                    heat_unit_var.set(HEAT_UNITS[0])
+
+            hv_box.bind("<<ComboboxSelected>>", _update_hvac)
+            _update_hvac()
+            var = tk.BooleanVar(value=True)
+            ttk.Checkbutton(lf, text="Include EVSE", variable=var).grid(
+                row=len(fields) + 1, column=0, columnspan=2
+            )
+            self.apartment_ev_vars.append(var)
+            self.apartment_hvac_vars.append(hv_var)
+            self.apartment_entries.append(entries)
+            extra_frame = ttk.LabelFrame(lf, text="Extra Loads >1.5 kW")
+            extra_frame.grid(row=len(fields) + 2, column=0, columnspan=3, pady=5, sticky="w")
+            self.apartment_extra_frames.append(extra_frame)
+            rows: list[tuple[ttk.Entry, ttk.Entry]] = []
+
+            def _add_extra_row(frame=extra_frame, lst=rows):
+                r = len(lst)
+                le = ttk.Entry(frame)
+                le.grid(row=r, column=0)
+                ke = ttk.Entry(frame, width=6)
+                ke.grid(row=r, column=1)
+                lst.append((le, ke))
+
+            ttk.Button(extra_frame, text="Add", command=_add_extra_row).grid(row=0, column=2)
+            _add_extra_row()
+            self.apartment_extra_rows.append(rows)
+
+        for _ in range(4):
+            _add_unit()
+
+        ttk.Button(frame, text="Add Unit", command=_add_unit).grid(row=1, column=0, pady=5)
+        ttk.Button(frame, text="Remove Unit", command=self._remove_apartment_unit).grid(row=1, column=1, pady=5)
+        ttk.Button(frame, text="Calculate", command=self._calc_apartment).grid(row=2, column=0, columnspan=2, pady=5)
+        ttk.Button(frame, text="Export PDF", command=self._export_apartment_pdf).grid(row=3, column=0, columnspan=2)
+
+        self.apartment_result = tk.StringVar()
+        ttk.Label(frame, textvariable=self.apartment_result).grid(row=4, column=0, columnspan=2)
+
+    def _remove_apartment_unit(self) -> None:
+        if not self.apartment_frames:
+            return
+        lf = self.apartment_frames.pop()
+        lf.destroy()
+        self.apartment_entries.pop()
+        self.apartment_ev_vars.pop()
+        self.apartment_hvac_vars.pop()
+        self.apartment_heat_unit_vars.pop()
+        self.apartment_range_vars.pop()
+        self.apartment_extra_rows.pop()
+        self.apartment_extra_frames.pop()
+
+    def _make_apartment_unit(self, entries: dict[str, ttk.Entry], idx: int) -> Dwelling:
+        ac_kw = None
+        if self.apartment_hvac_vars[idx].get() != "Heat Pump":
+            ac_kw = pos_or_none(_float_from_entry(entries["ac"]), "ac_kw")
+        heat_kw = pos_or_none(_float_from_entry(entries["heat"]), "heat_kw")
+        if heat_kw is not None and self.apartment_heat_unit_vars[idx].get() == "tons":
+            heat_kw *= TON_TO_KW
+        return Dwelling(
+            floor_area_m2=float(entries["floor"].get()),
+            heat_kw=heat_kw,
+            ac_kw=ac_kw,
+            range_kw=_float_from_entry(entries["range"]) or 12.0,
+            has_range=self.apartment_range_vars[idx].get(),
+            dryer_kw=pos_or_none(_float_from_entry(entries["dryer"]), "dryer_kw"),
+            water_heater_kw=pos_or_none(_float_from_entry(entries["wh"]), "water_heater_kw"),
+            extra_loads=[
+                (l.get() or "Load", pos_or_none(_float_from_entry(k), "extra_load") or 0.0)
+                for l, k in self.apartment_extra_rows[idx]
+                if k.get().strip()
+            ],
+            has_ev=self.apartment_ev_vars[idx].get(),
+            ev_amps=int(_float_from_entry(entries["ev"]) or 32),
+        )
+
+    def _calc_apartment(self) -> None:
+        try:
+            units = [self._make_apartment_unit(e, i) for i, e in enumerate(self.apartment_entries)]
+            result = calculate_multi_demand(units)
+            self.apartment_last_result = result
+            self.apartment_result.set(
+                f"{result['amps']:.1f} A -> {result['suggested_breaker']} A"
+            )
+        except (ValueError, ValidationError) as err:
+            messagebox.showerror("Error", str(err))
+
+    def _export_apartment_pdf(self) -> None:
+        try:
+            if not hasattr(self, "apartment_last_result"):
+                self._calc_apartment()
+            result = self.apartment_last_result
+            if result is None:
+                return
+            path = filedialog.asksaveasfilename(
+                defaultextension=".pdf", filetypes=[("PDF", "*.pdf")]
+            )
+            if not path:
+                return
+            lines = [
+                "Apartment Calculation",
+                f"Total Watts: {result['watts']}",
+                f"Total Amps: {result['amps']:.1f}",
+                f"Suggested Breaker: {result['suggested_breaker']} A",
+                "",
+                "Details:",
+            ]
+            for i in range(len(self.apartment_entries)):
+                lines.append(f"Unit {i+1}:")
+                lines.extend(
+                    "  " + s
+                    for s in _describe_unit(
+                        result["inputs"][f"unit_{i+1}"], result["details"][f"unit_{i+1}"]
+                    )
+                )
             lines.append("Combined base:")
             for k, v in result["details"]["combined_base"].items():
                 lines.append(f"  {k}: {v}")
